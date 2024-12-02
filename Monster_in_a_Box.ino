@@ -7,11 +7,13 @@
 long ConsoleBps = 19200;
 const int sensorTrigPin = 14;          // sensorTrigPin tells distance sensor to start/stop a reading
 const int sensorEchoPin = 15;          // sensorEchoPin is where distance sensor provides feedback
-const int transistorGatePin = 38;      // transistorGatePin will flip the transistor to power the pneumatic solenoid valve's 12v power
+const int lidTransistorGatePin = 38;      // lidTransistorGatePin will flip the transistor to power the pneumatic solenoid valve's 12v power
+const int floorTransistorGatePin = 39;      // floorTransistorGatePin will flip the transistor to power the pneumatic solenoid valve's 12v power
 const int minTriggerDistance = 10;      // minimum distance, inches,  object must be away in order to trigger
 const int maxTriggerDistance = 72;      // maximum distance, inches, object must be away in order to trigger
-const int risingDelayMillis = 15000;   // risingDelayMillis is number of millis to hold body up
-const int loweringDelayMillis = 15000; // loweringDelayMillis is number of millis to allow body to lower before restarting loop
+const int lidUpMillis = 500;   // lidUpMillis is number of millis to hold lid up
+const int crateUpMillis = 500; // crateUpMillis is number of millis to hold crate up
+const int resetMillis = 5000; // resetMillis is number of millis to wait before allowing to be triggered again
 const int requiredHitCount = 2;       // number of matching hits from distance sensor to trigger rise
 const int soundTriggerPin = 29;       // soundTriggerPin is the pin # linked to the sound card, bringing it LOW turns on sound
 
@@ -20,19 +22,23 @@ long duration, inches, countOfHits, counter;
 
 boolean serialOn = true; //sometimes writing to Serial hangs board, so this flag turns off writing to Serial in log()
 #define RLED RED_LED
-#define GLED GREEN_LED
+#define GLED GREEN_LED //monitoring sensor
 #define BLED BLUE_LED
 
 void setup() {
   // initialize serial communication bits per second:
   Serial.begin(ConsoleBps); 
 
-  log("Setting output on transistorGatePin ()");
-  pinMode(transistorGatePin, OUTPUT);
+  log("Setting output on lidTransistorGatePin ()");
+  pinMode(lidTransistorGatePin, OUTPUT);
+  log("Setting output on floorTransistorGatePin ()");
+  pinMode(floorTransistorGatePin, OUTPUT);
 
-  // ensure body is down/lowered - power off transistor (and thus solenoid)
-  digitalWrite(transistorGatePin, LOW);      
-  log("transistorGatePin set to LOW voltage - ensuring body is down/lowered");
+  // ensure lid and floor lifters are down/lowered - power off transistor (and thus solenoid)
+  digitalWrite(lidTransistorGatePin, LOW);      
+  log("lidTransistorGatePin set to LOW voltage - ensuring lid is down/lowered");
+  digitalWrite(floorTransistorGatePin, LOW);      
+  log("floorTransistorGatePin set to LOW voltage - ensuring floor lifter is down/lowered");
 
  //setup sensor pins
   pinMode(sensorTrigPin, OUTPUT);
@@ -49,6 +55,12 @@ void setup() {
 }
 
 void loop() {
+  normalLogic();
+  //testLid();
+  //testCrate();
+}
+
+void normalLogic() {
   digitalWrite(RLED, HIGH);
   counter++;
   countOfHits = 0;
@@ -86,32 +98,43 @@ void loop() {
    digitalWrite(RLED, LOW);
    digitalWrite(BLED, HIGH);
    //raise body by triggering transistor (which powers solenoid)
-   log("Raising body...");
-   digitalWrite(transistorGatePin, HIGH);     // powers transistor and an LED so we can see it happen
+   log("Rumble box...");
 
-   //turn on sound - should play only once
-   digitalWrite(soundTriggerPin, HIGH); //force HIGH just to be sure it is off before turning on
-   delay(10);                           //slight delay to allow board to register the HIGH state
-   digitalWrite(soundTriggerPin, LOW);  //trigger the sound
-   delay(500);                          //give time for the pin to trigger
+   turnSoundOn();
+   liftLid();
+   delay(lidUpMillis);
+   dropLid();
+   liftLid();
+   delay(lidUpMillis);
+   dropLid();
+
+   liftCrate();
+   delay(crateUpMillis);
+   dropCrate();
+   liftLid();
+   delay(lidUpMillis);
+   dropLid();
+   liftCrate();
+   delay(crateUpMillis);
+   dropCrate();
+   turnSoundOff();
    
-   //stay in this state for a bit, playing sound...
-   delay(risingDelayMillis);
-   digitalWrite(soundTriggerPin, HIGH); //turn off sound
-   
-   //lower body
-   log("Lowering body...");
-   digitalWrite(transistorGatePin, LOW);      // power off transistor (and thus solenoid)
-
-
-   // delay long enough to allow body to lower and ready for next go...
-   delay(loweringDelayMillis);
    digitalWrite(BLED, LOW);
- }  
-   digitalWrite(RLED, LOW);
-   digitalWrite(GLED, HIGH);
-   delay(3000);
-   digitalWrite(GLED, LOW);
+   delay(resetMillis);
+ }
+}
+
+void testLid() {
+   liftLid();
+   delay(5000);
+   dropLid();
+   delay(5000);
+}
+void testCrate() {
+   liftCrate();
+   delay(5000);
+   dropCrate();
+   delay(5000);
 }
 
 long getSensorDistance()
@@ -141,6 +164,45 @@ long microsecondsToInches(long microseconds)
 // and return, so we divide by 2 to get the distance of the obstacle.
 // See: http://www.parallax.com/dl/docs/prod/acc/28015-PING-v1.3.pdf
 return microseconds / 74 / 2;
+}
+
+void turnSoundOn()
+{
+   log("turnSoundOn() running");
+   //turn on sound - should play only once
+   digitalWrite(soundTriggerPin, HIGH); //force HIGH just to be sure it is off before turning on
+   delay(10);                           //slight delay to allow board to register the HIGH state
+   digitalWrite(soundTriggerPin, LOW);  //trigger the sound
+}
+
+void turnSoundOff()
+{
+   log("turnSoundOff() running");
+   digitalWrite(soundTriggerPin, HIGH); //turn off sound
+}
+
+void liftLid()
+{
+     log("liftLid() running");
+   digitalWrite(lidTransistorGatePin, HIGH);     // powers transistor and an LED so we can see it happen  
+}
+
+void dropLid()
+{
+     log("dropLid() running");
+   digitalWrite(lidTransistorGatePin, LOW);     // powers transistor and an LED so we can see it happen  
+}
+
+void liftCrate()
+{
+     log("liftCrate() running");
+   digitalWrite(floorTransistorGatePin, HIGH);     // powers transistor and an LED so we can see it happen  
+}
+
+void dropCrate()
+{
+     log("dropCrate() running");
+   digitalWrite(floorTransistorGatePin, LOW);     // powers transistor and an LED so we can see it happen  
 }
 
 void log(String logLine)
